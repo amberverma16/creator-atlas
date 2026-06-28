@@ -1,0 +1,18 @@
+# Core app
+streamlit>=1.32.0,<2.0.0
+plotly>=5.18.0,<6.0.0
+pandas>=2.1.0,<3.0.0
+pyarrow>=14.0.0,<20.0.0
+
+# ML pipeline
+sentence-transformers>=2.6.0,<4.0.0
+numpy>=1.26.0,<3.0.0
+# umap-learn>=0.5.5,<0.6.0
+# scikit-learn>=1.4.0,<2.0.0
+
+# Optional: OpenAI embeddings (enable in Milestone 2+)
+# openai>=1.30.0,<2.0.0
+# python-dotenv>=1.0.0,<2.0.0
+
+# Development
+pytest>=8.0.0,<9.0.0
