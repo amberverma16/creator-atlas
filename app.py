@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import streamlit as st
 
-from utils.config import APP_NAME, MAP_HEIGHT
-from utils.data_loader import filter_creators, format_followers, load_creators
-from utils.paths import CREATORS_CSV, DATA_PROCESSED_DIR, ensure_data_dirs
+from utils.config import APP_NAME
+from utils.data_loader import filter_creators, format_followers, load_creators, load_map_data
+from utils.paths import CREATORS_CSV, EMBEDDINGS_PARQUET, MAP_COORDS_PARQUET, ensure_data_dirs
 from utils.ui import inject_global_styles, render_hero, render_sidebar, render_status_metrics
+from utils.viz import build_creator_map_figure, username_from_map_selection
 
 st.set_page_config(
     page_title=APP_NAME,
@@ -28,20 +29,16 @@ TABLE_COLUMNS = [
 
 
 def processed_artifacts_exist() -> bool:
-    """Check whether processed map artifacts are present."""
-    from utils.paths import EMBEDDINGS_PARQUET
-
-    expected = (
-        EMBEDDINGS_PARQUET,
-        DATA_PROCESSED_DIR / "map_coords.parquet",
-    )
-    return all(path.exists() for path in expected)
+    return EMBEDDINGS_PARQUET.exists() and MAP_COORDS_PARQUET.exists()
 
 
-def embeddings_ready() -> bool:
-    from utils.paths import EMBEDDINGS_PARQUET
+def map_coords_ready() -> bool:
+    return MAP_COORDS_PARQUET.exists()
 
-    return EMBEDDINGS_PARQUET.exists()
+
+def init_session_state(default_username: str | None) -> None:
+    if "selected_username" not in st.session_state and default_username:
+        st.session_state.selected_username = default_username
 
 
 def render_creator_detail(row: dict) -> None:
@@ -90,6 +87,37 @@ def render_dataset_table(df) -> None:
     st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 
+def render_map_section(filtered) -> str | None:
+    """Render the Plotly map and return a username selected via click, if any."""
+    if filtered.empty:
+        st.info("No creators match your filters.")
+        return None
+
+    selected_username = st.session_state.get("selected_username")
+    if selected_username not in filtered["username"].values:
+        selected_username = filtered.iloc[0]["username"]
+        st.session_state.selected_username = selected_username
+
+    fig, trace_frames = build_creator_map_figure(
+        filtered,
+        selected_username=selected_username,
+    )
+    event = st.plotly_chart(
+        fig,
+        use_container_width=True,
+        on_select="rerun",
+        selection_mode="points",
+        key="creator_map",
+    )
+
+    clicked_username = username_from_map_selection(event, trace_frames)
+    if clicked_username:
+        st.session_state.selected_username = clicked_username
+        return clicked_username
+
+    return None
+
+
 def main() -> None:
     ensure_data_dirs()
     inject_global_styles()
@@ -116,53 +144,49 @@ def main() -> None:
     render_hero()
     render_status_metrics(len(creators), category_count, processed_artifacts_exist())
 
-    if embeddings_ready():
-        st.success("Embeddings are ready. UMAP map coordinates are the next step.")
-    else:
-        st.info("Run `python scripts/build_embeddings.py` to generate embeddings.")
+    if not map_coords_ready():
+        st.warning(
+            "Map coordinates are missing. Run `python scripts/build_embeddings.py` "
+            "then `python scripts/build_map.py`."
+        )
 
     st.markdown("---")
+
+    search_query = st.text_input(
+        "Search",
+        placeholder="Name, username, bio, or category…",
+    )
+    all_categories = sorted(creators["category"].dropna().unique())
+    selected_categories = st.multiselect(
+        "Filter by category",
+        options=all_categories,
+        default=[],
+        placeholder="All categories",
+    )
+
+    filtered = filter_creators(
+        creators,
+        query=search_query,
+        categories=selected_categories or None,
+    )
+    init_session_state(filtered.iloc[0]["username"] if not filtered.empty else None)
 
     left, right = st.columns([2, 1])
 
     with left:
         st.subheader("Creator map")
-        st.markdown(
-            f"""
-            <div class="placeholder-map">
-                <div>
-                    <p style="font-size: 1.25rem; color: #E6EDF3; margin-bottom: 0.5rem;">
-                        Interactive map coming soon
-                    </p>
-                    <p style="font-size: 0.95rem;">
-                        Embeddings and UMAP coordinates will power a Plotly scatter
-                        plot here. Browse creators below while the AI pipeline is built.
-                    </p>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.caption(f"Reserved plot height: {MAP_HEIGHT}px")
+        if map_coords_ready():
+            try:
+                map_data = load_map_data()
+                map_filtered = map_data[map_data["username"].isin(filtered["username"])].copy()
+                render_map_section(map_filtered)
+                st.caption("Click a dot to select a creator. Proximity reflects semantic similarity.")
+            except FileNotFoundError as exc:
+                st.error(str(exc))
+        else:
+            st.info("Generate map coordinates to see the interactive atlas.")
 
         st.subheader("Browse creators")
-        search_query = st.text_input(
-            "Search",
-            placeholder="Name, username, bio, or category…",
-        )
-        all_categories = sorted(creators["category"].dropna().unique())
-        selected_categories = st.multiselect(
-            "Filter by category",
-            options=all_categories,
-            default=[],
-            placeholder="All categories",
-        )
-
-        filtered = filter_creators(
-            creators,
-            query=search_query,
-            categories=selected_categories or None,
-        )
         st.caption(f"Showing **{len(filtered)}** of **{len(creators)}** creators")
         render_dataset_table(filtered)
 
@@ -176,17 +200,24 @@ def main() -> None:
                 row["username"]: f"{row['display_name']} (@{row['username']})"
                 for _, row in filtered.iterrows()
             }
+            current = st.session_state.get("selected_username", options[0])
+            if current not in options:
+                current = options[0]
+
             selected_username = st.selectbox(
                 "Select a creator",
                 options=options,
+                index=options.index(current),
                 format_func=lambda u: labels[u],
+                key="creator_selectbox",
             )
+            st.session_state.selected_username = selected_username
             selected_row = filtered.loc[filtered["username"] == selected_username].iloc[0]
             render_creator_detail(selected_row.to_dict())
 
         st.divider()
         st.subheader("Similar creators")
-        st.caption("Top neighbors will appear here after the embedding pipeline runs.")
+        st.caption("Top neighbors will appear here in Milestone 4 (semantic search).")
 
 
 if __name__ == "__main__":

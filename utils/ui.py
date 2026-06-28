@@ -80,9 +80,9 @@ def render_sidebar(*, creator_count: int = 0, category_count: int = 0) -> None:
             - [x] Project scaffold
             - [x] Creator dataset
             - [x] Embedding pipeline
-            - [ ] UMAP coordinates
+            - [x] UMAP coordinates
             - [ ] Search & neighbors
-            - [ ] Interactive map
+            - [x] Interactive map
             """
         )
 

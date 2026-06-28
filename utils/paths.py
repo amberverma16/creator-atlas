@@ -12,6 +12,7 @@ CREATORS_CSV = DATA_DIR / "creators.csv"
 SEEDS_CSV = DATA_SEEDS_DIR / "tiktok_creators.csv"
 COLLECTION_REPORT_JSON = DATA_DIR / "collection_report.json"
 EMBEDDINGS_PARQUET = DATA_PROCESSED_DIR / "embeddings.parquet"
+MAP_COORDS_PARQUET = DATA_PROCESSED_DIR / "map_coords.parquet"
 
 
 def ensure_data_dirs() -> None:

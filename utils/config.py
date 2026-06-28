@@ -12,3 +12,9 @@ NEIGHBOR_COUNT = 10
 # Embedding model (sentence-transformers)
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 EMBEDDING_DIMENSION = 384
+
+# UMAP (map layout)
+UMAP_N_NEIGHBORS = 15
+UMAP_MIN_DIST = 0.1
+UMAP_METRIC = "cosine"
+UMAP_RANDOM_STATE = 42

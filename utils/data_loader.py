@@ -7,8 +7,30 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from utils.paths import CREATORS_CSV
+from utils.paths import CREATORS_CSV, MAP_COORDS_PARQUET
 from utils.schema import CREATOR_COLUMNS, loads_json_list, validate_creators_df
+
+
+@st.cache_data(show_spinner="Loading map…")
+def load_map_data(
+    map_path: str | Path = MAP_COORDS_PARQUET,
+    creators_path: str | Path = CREATORS_CSV,
+) -> pd.DataFrame:
+    """Load merged map coordinates and creator profile fields."""
+    from utils.map import load_map_coords
+
+    map_df = load_map_coords(Path(map_path))
+    creators = _load_creators_df(Path(creators_path))
+    extra_cols = [
+        "creator_id",
+        "recent_captions_list",
+        "hashtags_list",
+        "caption_count",
+        "hashtag_count",
+        "search_text",
+    ]
+    available = [col for col in extra_cols if col in creators.columns]
+    return map_df.merge(creators[available], on="creator_id", how="left")
 
 
 @st.cache_data(show_spinner="Loading creators…")
