@@ -1,12 +1,6 @@
 # Creator Atlas
 
-An interactive map of social media creators powered by AI embeddings and dimensionality reduction. Search for a creator and explore where they sit in the broader creator landscape — alongside the people most similar to them.
-
-Built as a standalone weekend project to demonstrate machine learning, semantic search, and data visualization.
-
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Streamlit](https://img.shields.io/badge/streamlit-1.32+-FF4B4B.svg)](https://streamlit.io)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+An interactive map of social media creators powered by AI embeddings and dimensionality reduction. Search for a creator and explore where they sit in the broader creator landscape alongside the people most similar to them.
 
 ---
 
