@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -9,11 +10,21 @@ import pandas as pd
 
 from utils.config import EMBEDDING_MODEL
 from utils.data_loader import _load_creators_df
-from utils.paths import CREATORS_CSV
+from utils.paths import CREATORS_CSV, EMBEDDINGS_PARQUET
 from utils.text import build_embedding_text
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
+
+
+def load_embeddings_parquet(path: Path = EMBEDDINGS_PARQUET) -> pd.DataFrame:
+    """Load precomputed creator embeddings from parquet."""
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Embeddings not found at {path}. Run `python scripts/build_embeddings.py` first."
+        )
+    return pd.read_parquet(path)
 
 
 def add_embedding_text(df: pd.DataFrame) -> pd.DataFrame:

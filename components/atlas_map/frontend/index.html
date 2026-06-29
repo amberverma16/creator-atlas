@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="./streamlit-component-lib.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+    #map { width: 100%; height: 100vh; }
+    #err { display: none; color: #fca5a5; padding: 1rem; font-family: Inter, sans-serif; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div id="err"></div>
+  <div id="map"></div>
+  <script>
+    const plotDiv = document.getElementById("map");
+    const errDiv = document.getElementById("err");
+    let MAP_DATA = null;
+    let SELECTED = "";
+    let currentLayout = null;
+    let relayoutTimer = null;
+    let plotReady = false;
+
+    const LOD = { DOTS: 1.8, LABELS: 3.5 };
+
+    function showError(msg) {
+      errDiv.style.display = "block";
+      errDiv.textContent = msg;
+    }
+
+    function parseData(raw) {
+      if (!raw) return { creators: [], categories: [], bounds: { x: [0, 1], y: [0, 1] } };
+      if (typeof raw === "string") return JSON.parse(raw);
+      return raw;
+    }
+
+    function zoomFactor(layout) {
+      if (!MAP_DATA?.bounds || !layout?.xaxis?.range || !layout?.yaxis?.range) return 1;
+      const viewW = layout.xaxis.range[1] - layout.xaxis.range[0];
+      const viewH = layout.yaxis.range[1] - layout.yaxis.range[0];
+      const fullW = MAP_DATA.bounds.x[1] - MAP_DATA.bounds.x[0];
+      const fullH = MAP_DATA.bounds.y[1] - MAP_DATA.bounds.y[0];
+      return Math.max(fullW / Math.max(viewW, 1e-9), fullH / Math.max(viewH, 1e-9));
+    }
+
+    function inViewport(x, y, layout) {
+      const [x0, x1] = layout.xaxis.range;
+      const [y0, y1] = layout.yaxis.range;
+      const padX = (x1 - x0) * 0.08;
+      const padY = (y1 - y0) * 0.08;
+      return x >= x0 - padX && x <= x1 + padX && y >= y0 - padY && y <= y1 + padY;
+    }
+
+    function markerSize(followers) {
+      return Math.min(Math.max(5 + Math.pow(Math.max(followers, 1), 0.28) / 10, 4), 16);
+    }
+
+    function gridTraces() {
+      const { x, y } = MAP_DATA.bounds;
+      const traces = [];
+      for (let i = 1; i <= 3; i++) {
+        const fx = x[0] + (x[1] - x[0]) * (i / 4);
+        const fy = y[0] + (y[1] - y[0]) * (i / 4);
+        traces.push({ type: "scatter", mode: "lines", x: [fx, fx], y: [y[0], y[1]],
+          line: { color: "rgba(196,181,253,0.05)", width: 1 }, hoverinfo: "skip", showlegend: false });
+        traces.push({ type: "scatter", mode: "lines", x: [x[0], x[1]], y: [fy, fy],
+          line: { color: "rgba(196,181,253,0.05)", width: 1 }, hoverinfo: "skip", showlegend: false });
+      }
+      return traces;
+    }
+
+    function clusterTraces() {
+      const traces = [];
+      for (const cat of MAP_DATA.categories) {
+        const size = 40 + Math.sqrt(cat.count) * 10;
+        traces.push({
+          type: "scatter", mode: "markers", x: [cat.x], y: [cat.y],
+          marker: { size: size * 2.8, color: cat.color, opacity: 0.1, line: { width: 0 } },
+          hoverinfo: "skip", showlegend: false,
+        });
+        traces.push({
+          type: "scatter", mode: "markers", x: [cat.x], y: [cat.y],
+          marker: { size, color: cat.color, opacity: 0.45,
+            line: { width: 1, color: "rgba(255,255,255,0.25)" } },
+          customdata: [`__cluster__:${cat.name}`],
+          hovertemplate: `<b>${cat.name}</b><br>${cat.count} creators<extra></extra>`,
+          showlegend: false,
+        });
+        traces.push({
+          type: "scatter", mode: "text", x: [cat.x], y: [cat.y],
+          text: [cat.name.toUpperCase()],
+          textfont: { size: 16, color: cat.color, family: "Inter, sans-serif" },
+          opacity: 0.22, hoverinfo: "skip", showlegend: false,
+        });
+        traces.push({
+          type: "scatter", mode: "text", x: [cat.x], y: [cat.y],
+          text: [cat.name],
+          textfont: { size: 13, color: "rgba(245,240,255,0.9)", family: "Inter, sans-serif" },
+          hoverinfo: "skip", showlegend: false,
+        });
+      }
+      return traces;
+    }
+
+    function creatorTraces(layout, zf) {
+      const showLabels = zf >= LOD.LABELS;
+      const visible = MAP_DATA.creators.filter(c => inViewport(c.x, c.y, layout));
+      if (!visible.length) return [];
+
+      const hasSel = Boolean(SELECTED);
+      const labelOffset = (layout.xaxis.range[1] - layout.xaxis.range[0]) * 0.022;
+      const traces = [];
+
+      traces.push({
+        type: "scatter", mode: "markers",
+        x: visible.map(c => c.x), y: visible.map(c => c.y),
+        marker: {
+          size: visible.map(c => markerSize(c.followers) * 2.2),
+          color: visible.map(c => c.color),
+          opacity: visible.map(c => !hasSel ? 0.15 : (c.username === SELECTED ? 0.4 : 0.05)),
+          line: { width: 0 },
+        },
+        hoverinfo: "skip", showlegend: false,
+      });
+
+      traces.push({
+        type: "scatter", mode: "markers",
+        x: visible.map(c => c.x), y: visible.map(c => c.y),
+        marker: {
+          size: visible.map(c => c.username === SELECTED ? markerSize(c.followers) + 6 : markerSize(c.followers)),
+          color: visible.map(c => c.color),
+          opacity: visible.map(c => !hasSel ? 0.9 : (c.username === SELECTED ? 1 : 0.18)),
+          line: {
+            width: visible.map(c => c.username === SELECTED ? 2.5 : 0),
+            color: visible.map(c => c.username === SELECTED ? "#fff" : "rgba(255,255,255,0)"),
+          },
+        },
+        customdata: visible.map(c => c.username),
+        text: visible.map(c => c.display_name),
+        hovertemplate: "<b>%{text}</b><br>@%{customdata}<extra></extra>",
+        showlegend: false,
+      });
+
+      if (showLabels) {
+        const labeled = hasSel
+          ? visible.filter(c => c.username === SELECTED || markerSize(c.followers) >= 9)
+          : visible.filter(c => markerSize(c.followers) >= 10);
+        if (labeled.length) {
+          traces.push({
+            type: "scatter", mode: "text",
+            x: labeled.map(c => c.x + labelOffset),
+            y: labeled.map(c => c.y),
+            text: labeled.map(c => c.display_name),
+            textfont: {
+              size: labeled.map(c => c.username === SELECTED ? 12 : 10),
+              color: labeled.map(c => c.username === SELECTED ? "#fff" : "rgba(237,233,254,0.85)"),
+              family: "Inter, sans-serif",
+            },
+            textposition: "middle left",
+            hoverinfo: "skip", showlegend: false,
+          });
+        }
+      }
+
+      if (SELECTED) {
+        const sel = MAP_DATA.creators.find(c => c.username === SELECTED);
+        if (sel && inViewport(sel.x, sel.y, layout)) {
+          traces.push({
+            type: "scatter", mode: "markers", x: [sel.x], y: [sel.y],
+            marker: { size: [markerSize(sel.followers) * 4], color: ["rgba(167,139,250,0.12)"],
+              line: { width: 2, color: "rgba(196,181,253,0.65)" } },
+            hoverinfo: "skip", showlegend: false,
+          });
+        }
+      }
+      return traces;
+    }
+
+    function buildTraces(layout) {
+      const zf = zoomFactor(layout);
+      const traces = [...gridTraces()];
+      if (zf < LOD.DOTS) {
+        traces.push(...clusterTraces());
+      } else {
+        traces.push(...creatorTraces(layout, zf));
+      }
+      return traces;
+    }
+
+    function baseLayout() {
+      const { x, y } = MAP_DATA.bounds;
+      return {
+        paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+        margin: { l: 0, r: 0, t: 0, b: 0 },
+        xaxis: { range: [...x], visible: false, fixedrange: false },
+        yaxis: { range: [...y], visible: false, fixedrange: false, scaleanchor: "x", scaleratio: 1 },
+        hovermode: "closest", dragmode: "pan", showlegend: false,
+        uirevision: "creator-atlas-lod-v3",
+      };
+    }
+
+    const plotConfig = {
+      responsive: true, displayModeBar: false, scrollZoom: true, doubleClick: "reset",
+    };
+
+    function drawPlot(preserve) {
+      const layout = preserve && currentLayout?.xaxis?.range
+        ? { ...baseLayout(),
+            xaxis: { ...baseLayout().xaxis, range: [...currentLayout.xaxis.range] },
+            yaxis: { ...baseLayout().yaxis, range: [...currentLayout.yaxis.range] } }
+        : baseLayout();
+      currentLayout = layout;
+      const traces = buildTraces(layout);
+
+      if (!plotReady) {
+        Plotly.newPlot(plotDiv, traces, layout, plotConfig).then(() => {
+          plotReady = true;
+          attachListeners();
+        }).catch(e => showError("Plotly error: " + e.message));
+      } else {
+        Plotly.react(plotDiv, traces, layout, plotConfig);
+      }
+    }
+
+    function attachListeners() {
+      if (plotDiv._atlasListeners) return;
+      plotDiv.on("plotly_relayout", () => {
+        clearTimeout(relayoutTimer);
+        relayoutTimer = setTimeout(() => {
+          if (!plotDiv.layout?.xaxis?.range) return;
+          currentLayout = plotDiv.layout;
+          Plotly.react(plotDiv, buildTraces(currentLayout), { ...currentLayout, uirevision: "creator-atlas-lod-v3" }, plotConfig);
+        }, 40);
+      });
+      plotDiv.on("plotly_click", (data) => {
+        const cd = data?.points?.[0]?.customdata;
+        if (!cd || String(cd).startsWith("__cluster__")) return;
+        SELECTED = String(cd);
+        Streamlit.setComponentValue({ username: SELECTED });
+        currentLayout = plotDiv.layout;
+        Plotly.react(plotDiv, buildTraces(currentLayout), { ...currentLayout, uirevision: "creator-atlas-lod-v3" }, plotConfig);
+      });
+      plotDiv._atlasListeners = true;
+    }
+
+    function onRender(event) {
+      try {
+        const args = event.detail.args;
+        MAP_DATA = parseData(args.data);
+        SELECTED = args.selected || "";
+        const h = args.height || 900;
+        plotDiv.style.height = h + "px";
+        Streamlit.setFrameHeight(h);
+
+        if (plotReady && plotDiv.layout?.xaxis?.range) {
+          currentLayout = plotDiv.layout;
+          Plotly.react(plotDiv, buildTraces(currentLayout), { ...currentLayout, uirevision: "creator-atlas-lod-v3" }, plotConfig);
+        } else {
+          drawPlot(false);
+        }
+      } catch (e) {
+        showError(String(e));
+      }
+    }
+
+    Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, onRender);
+    Streamlit.setComponentReady();
+    Streamlit.setFrameHeight(900);
+  </script>
+</body>
+</html>

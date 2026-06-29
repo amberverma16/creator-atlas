@@ -13,16 +13,8 @@ from utils.config import (
     UMAP_N_NEIGHBORS,
     UMAP_RANDOM_STATE,
 )
-from utils.embeddings import embeddings_to_matrix
+from utils.embeddings import embeddings_to_matrix, load_embeddings_parquet
 from utils.paths import CREATORS_CSV, EMBEDDINGS_PARQUET, MAP_COORDS_PARQUET
-
-
-def load_embeddings_parquet(path: Path = EMBEDDINGS_PARQUET) -> pd.DataFrame:
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Embeddings not found at {path}. Run `python scripts/build_embeddings.py` first."
-        )
-    return pd.read_parquet(path)
 
 
 def run_umap(

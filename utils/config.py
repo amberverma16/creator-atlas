@@ -6,8 +6,14 @@ APP_VERSION = "0.1.0"
 APP_REPO_URL = "https://github.com/amberverma16/creator-atlas"
 
 # Placeholder map settings (used once visualization is implemented)
-MAP_HEIGHT = 620
+MAP_HEIGHT = 850
 NEIGHBOR_COUNT = 10
+
+# Map level-of-detail (zoom factor thresholds)
+LOD_DOTS_ZOOM = 1.8
+LOD_LABELS_ZOOM = 3.5
+MAX_REGION_LABELS = 8
+ZOOM_STEP = 1.35
 
 # Embedding model (sentence-transformers)
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"

@@ -11,7 +11,7 @@ def test_follower_exception_allows_small_accounts() -> None:
     assert accepted is True
     assert reason is None
 
-    accepted, reason = passes_quality_gate("baboob", "BaboOB", 6)
+    accepted, reason = passes_quality_gate("baboob.media", "BaboOB", 6)
     assert accepted is True
     assert reason is None
 

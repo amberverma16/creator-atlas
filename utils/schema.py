@@ -28,7 +28,7 @@ SEED_COLUMNS = ["username", "category"]
 
 MAX_RECENT_POSTS = 12
 MIN_FOLLOWERS = 10_000
-FOLLOWER_EXCEPTIONS = frozenset({"brownbindibaddie", "baboob"})
+FOLLOWER_EXCEPTIONS = frozenset({"brownbindibaddie", "baboob.media"})
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9._]{1,24}$")
 GENERIC_DISPLAY_NAME_PATTERN = re.compile(r"^user\d+$", re.IGNORECASE)
 FANPAGE_HINT_PATTERN = re.compile(r"fan\s*page", re.IGNORECASE)
